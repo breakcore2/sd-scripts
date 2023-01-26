@@ -13,6 +13,7 @@ import os
 import random
 import hashlib
 from io import BytesIO
+from pathlib import Path
 
 from tqdm import tqdm
 import torch
@@ -29,7 +30,7 @@ from torch import einsum
 import safetensors.torch
 
 import library.model_util as model_util
-
+Image.MAX_IMAGE_PIXELS = 131155784
 # Tokenizer: checkpointから読み込むのではなくあらかじめ提供されているものを使う
 TOKENIZER_PATH = "openai/clip-vit-large-patch14"
 V2_STABLE_DIFFUSION_PATH = "stabilityai/stable-diffusion-2"     # ここからtokenizerだけ使う v2とv2.1はtokenizer仕様は同じ
@@ -248,11 +249,15 @@ class BaseDataset(torch.utils.data.Dataset):
       random.shuffle(bucket)
 
   def load_image(self, image_path):
-    image = Image.open(image_path)
-    if not image.mode == "RGB":
-      image = image.convert("RGB")
-    img = np.array(image, np.uint8)
-    return img
+    try:
+      image = Image.open(image_path)
+      if not image.mode == "RGB":
+        image = image.convert("RGB")
+      img = np.array(image, np.uint8)
+      return img
+    except:
+      print(f"error opening image {image_path}")
+      raise
 
   def resize_and_trim(self, image, reso):
     image_height, image_width = image.shape[0:2]
@@ -619,7 +624,13 @@ class FineTuningDataset(BaseDataset):
         caption = caption + ', ' + tags
       assert caption is not None and len(caption) > 0, f"caption or tag is required / キャプションまたはタグは必須です:{abs_path}"
 
-      image_info = ImageInfo(image_key, dataset_repeats, caption, False, abs_path)
+      image_repeats = 1
+      try:
+        image_repeats = int(Path(image_key).parent.name.split("_")[0])
+        print(f"repeating {image_repeats} for {abs_path}")
+      except:
+        pass
+      image_info = ImageInfo(image_key, image_repeats * dataset_repeats, caption, False, abs_path)
       image_info.image_size = img_md.get('train_resolution')
 
       if not self.color_aug:

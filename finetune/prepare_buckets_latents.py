@@ -5,6 +5,7 @@ import argparse
 import glob
 import os
 import json
+from pathlib import Path
 
 from tqdm import tqdm
 import numpy as np
@@ -36,8 +37,16 @@ def get_latents(vae, images, weight_dtype):
 
 
 def main(args):
-  image_paths = glob.glob(os.path.join(args.train_data_dir, "*.jpg")) + \
-      glob.glob(os.path.join(args.train_data_dir, "*.png")) + glob.glob(os.path.join(args.train_data_dir, "*.webp"))
+  image_paths = []
+  if args.recursive:
+    path = Path(args.train_data_dir)
+    image_paths = list(path.rglob("*.jpg")) +\
+                  list(path.rglob("*.png")) +\
+                  list(path.rglob("*.webp"))
+    image_paths = [str(x) for x in image_paths]
+  else:
+    image_paths = glob.glob(os.path.join(args.train_data_dir, "*.jpg")) + \
+        glob.glob(os.path.join(args.train_data_dir, "*.png")) + glob.glob(os.path.join(args.train_data_dir, "*.webp"))
   print(f"found {len(image_paths)} images.")
 
   if os.path.exists(args.in_json):
@@ -130,8 +139,12 @@ def main(args):
         latents = get_latents(vae, [img for _, _, img in bucket], weight_dtype)
 
         for (image_key, reso, _), latent in zip(bucket, latents):
-          npz_file_name = os.path.splitext(os.path.basename(image_key))[0] if args.full_path else image_key
-          np.savez(os.path.join(args.train_data_dir, npz_file_name), latent)
+          if args.full_path:
+            image_path = Path(image_key)
+            np.savez(image_path.with_suffix(''), latent)
+          else:
+            npz_file_name = os.path.splitext(os.path.basename(image_key))[0] if args.full_path else image_key
+            np.savez(os.path.join(args.train_data_dir, npz_file_name), latent)
 
         # flip
         if args.flip_aug:
@@ -174,6 +187,7 @@ if __name__ == '__main__':
                       help="use full path as image-key in metadata (supports multiple directories) / メタデータで画像キーをフルパスにする（複数の学習画像ディレクトリに対応）")
   parser.add_argument("--flip_aug", action="store_true",
                       help="flip augmentation, save latents for flipped images / 左右反転した画像もlatentを取得、保存する")
+  parser.add_argument("--recursive", action="store_true", help="recursively process imagesin child folders")
 
   args = parser.parse_args()
   main(args)
